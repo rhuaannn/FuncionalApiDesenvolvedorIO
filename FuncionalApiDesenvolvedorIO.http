@@ -1,0 +1,6 @@
+@FuncionalApiDesenvolvedorIO_HostAddress = http://localhost:5019
+
+GET {{FuncionalApiDesenvolvedorIO_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
