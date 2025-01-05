@@ -1,10 +1,13 @@
 ﻿using FuncionalApiDesenvolvedorIO.Data;
 using FuncionalApiDesenvolvedorIO.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace FuncionalApiDesenvolvedorIO.Controllers;
 
+
+[Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/v1/produtos")]
 public class ProdutosController : ControllerBase
@@ -18,7 +21,6 @@ public class ProdutosController : ControllerBase
     {
         _context = context;
     }
-
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -102,6 +104,7 @@ public class ProdutosController : ControllerBase
 
         return NoContent();
     }
+
 
     [HttpDelete("{id:Guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

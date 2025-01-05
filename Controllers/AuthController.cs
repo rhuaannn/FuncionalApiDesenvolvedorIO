@@ -1,10 +1,12 @@
 ﻿
 using FuncionalApiDesenvolvedorIO.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 
 namespace FuncionalApiDesenvolvedorIO.Controllers;
@@ -24,8 +26,7 @@ public class AuthController : ControllerBase
         _signInManager = signInManager;
         _userManager = userManager;
         _jwtSettings = jwtSettings.Value;
-        Console.WriteLine(_jwtSettings.Secret);
-        Console.WriteLine(_jwtSettings);
+
     }
 
     [HttpPost]
@@ -47,7 +48,7 @@ public class AuthController : ControllerBase
         if (result.Succeeded)
         {
             await _signInManager.SignInAsync(user, false);
-            return Ok(GenerateJwt());
+            return Ok(await GenerateJwt(user.Email));
         }
         if (!result.Succeeded)
         {
@@ -59,7 +60,7 @@ public class AuthController : ControllerBase
 
     [HttpPost]
     [Route("login")]
-
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult> Login(LoginUserViewModel login)
     {
         if (!ModelState.IsValid)
@@ -69,21 +70,36 @@ public class AuthController : ControllerBase
         var result = await _signInManager.PasswordSignInAsync(login.Email, login.Password, false, true);
         if (result.Succeeded)
         {
-            return Ok(GenerateJwt());
+            return Ok(await GenerateJwt(login.Email));
 
         }
-        return Problem("Usuário ou senha inválidos");
+        return Forbid("Usuário ou senha inválidos");
     }
 
     [ApiExplorerSettings(IgnoreApi = true)]
-    public string GenerateJwt()
+    public async Task<string> GenerateJwt(string email)
     {
+        var user = await _userManager.FindByEmailAsync(email);
+        var roles = await _userManager.GetRolesAsync(user);
+
+        var claims = new List<Claim>
+        {
+            new Claim(ClaimTypes.Name, user.UserName)
+        };
+        foreach (var role in roles)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, role));
+        }
 
         var tokenHandler = new JwtSecurityTokenHandler();
+        if (string.IsNullOrEmpty(_jwtSettings.Secret))
+        {
+            throw new ArgumentException("A chave secreta JWT está faltando ou é vazia.");
+        }
         var key = Encoding.ASCII.GetBytes(_jwtSettings.Secret);
-
         var token = tokenHandler.CreateToken(new SecurityTokenDescriptor
         {
+            Subject = new ClaimsIdentity(claims),
             Issuer = _jwtSettings.Emissor,
             Audience = _jwtSettings.Audiencia,
             Expires = DateTime.UtcNow.AddHours(_jwtSettings.Expiration),

@@ -1,11 +1,12 @@
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
 using FuncionalApiDesenvolvedorIO.Data;
 using FuncionalApiDesenvolvedorIO.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
 using Microsoft.OpenApi.Models;
+using System.Text;
 
 namespace FuncionalApiDesenvolvedorIO
 {
@@ -17,6 +18,24 @@ namespace FuncionalApiDesenvolvedorIO
 
             // Adiciona serviços ao container.
             builder.Services.AddControllers();
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("Development", builder =>
+
+                    builder
+                    .AllowAnyHeader()
+                    .AllowAnyOrigin()
+                    .AllowAnyOrigin());
+
+                options.AddPolicy("Production", builder =>
+                    builder
+                    .WithHeaders("https://localhost:7019")
+                    .WithMethods("POST")
+                    .AllowAnyHeader()
+                );
+            });
+            builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
+            builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<JwtSettings>>().Value);
 
             // Configuração do Swagger
             builder.Services.AddEndpointsApiExplorer();
@@ -25,9 +44,10 @@ namespace FuncionalApiDesenvolvedorIO
                 c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
                 {
                     In = ParameterLocation.Header,
-                    Description = "Por favor insira o token JWT.",
+                    Description = "Insira o token JWT no formato: Bearer {seu token}",
                     Name = "Authorization",
-                    Type = SecuritySchemeType.ApiKey
+                    Type = SecuritySchemeType.ApiKey,
+                    Scheme = "Bearer"
                 });
 
                 c.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -39,9 +59,12 @@ namespace FuncionalApiDesenvolvedorIO
                 {
                     Type = ReferenceType.SecurityScheme,
                     Id = "Bearer"
-                }
+                },
+                Scheme = "Bearer",
+                Name = "Bearer",
+                In = ParameterLocation.Header
             },
-            new string[] { }
+            new List<string>()
         }
     });
             });
@@ -59,29 +82,35 @@ namespace FuncionalApiDesenvolvedorIO
                 .AddDefaultTokenProviders();
 
             // Configuração de autenticação JWT
+            builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
+
             builder.Services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
                 options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
             })
-            .AddJwtBearer(options =>
-            {
-                var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>();
-                var key = Encoding.ASCII.GetBytes(jwtSettings.Secret);
+             .AddJwtBearer(options =>
+             {
+                 // Resolva o JwtSettings do contêiner de serviços
+                 using var scope = builder.Services.BuildServiceProvider().CreateScope();
+                 var jwtSettings = scope.ServiceProvider.GetRequiredService<JwtSettings>();
 
-                options.RequireHttpsMetadata = builder.Environment.IsProduction();
-                options.SaveToken = true;
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    IssuerSigningKey = new SymmetricSecurityKey(key),
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
-                    ValidIssuer = jwtSettings.Emissor,
-                    ValidAudience = jwtSettings.Audiencia,
-                    ValidateLifetime = true,
-                    ClockSkew = TimeSpan.Zero
-                };
-            });
+                 var key = Encoding.ASCII.GetBytes(jwtSettings.Secret);
+
+                 options.RequireHttpsMetadata = builder.Environment.IsProduction();
+                 options.SaveToken = true;
+                 options.TokenValidationParameters = new TokenValidationParameters
+                 {
+                     IssuerSigningKey = new SymmetricSecurityKey(key),
+                     ValidateIssuer = true,
+                     ValidateAudience = true,
+                     ValidIssuer = jwtSettings.Emissor,
+                     ValidAudience = jwtSettings.Audiencia,
+                     ValidateLifetime = true,
+                     ClockSkew = TimeSpan.Zero
+                 };
+             });
+
 
             // Adiciona o serviço de logging
             builder.Services.AddLogging(logging =>
@@ -97,6 +126,12 @@ namespace FuncionalApiDesenvolvedorIO
             {
                 app.UseSwagger();
                 app.UseSwaggerUI();
+                app.UseCors("Development");
+            }
+            else
+            {
+                app.UseCors("Production");
+                2
             }
 
             app.UseHttpsRedirection();
